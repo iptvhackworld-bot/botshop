@@ -1,3 +1,5 @@
+process.env.NTBA_FIX_350 = 1;
+
 require("dotenv").config();
 
 const { Telegraf } = require("telegraf");
@@ -138,6 +140,60 @@ bot.start(async (ctx) => {
 
 });
 
+// ================= MENU =================
+
+bot.action("menu", async (ctx) => {
+
+    const isAdmin =
+        ctx.from.id.toString() === ADMIN_ID;
+
+    const buttons = [
+
+        [
+            {
+                text: "🛒 Boutique",
+                callback_data: "shop"
+            }
+        ],
+
+        [
+            {
+                text: "🎰 Roulette",
+                callback_data: "roulette"
+            }
+        ],
+
+        [
+            {
+                text: "🕒 Horaires",
+                callback_data: "horaires"
+            }
+        ]
+
+    ];
+
+    if (isAdmin) {
+
+        buttons.push([
+            {
+                text: "👑 Admin",
+                callback_data: "admin_panel"
+            }
+        ]);
+
+    }
+
+    await ctx.reply(
+        "🏠 MENU PRINCIPAL",
+        {
+            reply_markup: {
+                inline_keyboard: buttons
+            }
+        }
+    );
+
+});
+
 // ================= HORAIRES =================
 
 bot.action("horaires", async (ctx) => {
@@ -162,44 +218,6 @@ bot.action("horaires", async (ctx) => {
                         {
                             text: "🏠 Retour Menu",
                             callback_data: "menu"
-                        }
-                    ]
-
-                ]
-            }
-        }
-    );
-
-});
-
-// ================= MENU =================
-
-bot.action("menu", async (ctx) => {
-
-    await ctx.reply(
-        "🏠 MENU",
-        {
-            reply_markup: {
-                inline_keyboard: [
-
-                    [
-                        {
-                            text: "🛒 Boutique",
-                            callback_data: "shop"
-                        }
-                    ],
-
-                    [
-                        {
-                            text: "🎰 Roulette",
-                            callback_data: "roulette"
-                        }
-                    ],
-
-                    [
-                        {
-                            text: "🕒 Horaires",
-                            callback_data: "horaires"
                         }
                     ]
 
@@ -268,21 +286,22 @@ bot.action(/cat_(.+)/, async (ctx) => {
 
     const category = ctx.match[1];
 
-    const list = await Product.find({
-        category: category
-    });
+    const products =
+        await Product.find({
+            category: category
+        });
 
-    if (!list.length) {
+    if (!products.length) {
         return ctx.reply("❌ Aucun produit");
     }
 
-    for (const product of list) {
+    for (const product of products) {
 
         const caption =
 `🛒 ${product.name}
 
 📄 Description : ${product.description}
-   Prix : ${product.price}
+💰 Prix : ${product.price}
 📦 Stock : ${product.stock}`;
 
         // ===== VIDEO =====
@@ -298,7 +317,8 @@ bot.action(/cat_(.+)/, async (ctx) => {
                             [
                                 {
                                     text: "🛒 Commander",
-                                    callback_data: `buy_${product._id}`
+                                    callback_data:
+                                        `buy_${product._id}`
                                 }
                             ]
                         ]
@@ -321,7 +341,8 @@ bot.action(/cat_(.+)/, async (ctx) => {
                             [
                                 {
                                     text: "🛒 Commander",
-                                    callback_data: `buy_${product._id}`
+                                    callback_data:
+                                        `buy_${product._id}`
                                 }
                             ]
                         ]
@@ -331,7 +352,7 @@ bot.action(/cat_(.+)/, async (ctx) => {
 
         }
 
-        // ===== TEXTE =====
+        // ===== TEXT =====
 
         else {
 
@@ -343,7 +364,8 @@ bot.action(/cat_(.+)/, async (ctx) => {
                             [
                                 {
                                     text: "🛒 Commander",
-                                    callback_data: `buy_${product._id}`
+                                    callback_data:
+                                        `buy_${product._id}`
                                 }
                             ]
                         ]
@@ -363,18 +385,18 @@ bot.action(/buy_(.+)/, async (ctx) => {
 
     const productId = ctx.match[1];
 
-    const foundProduct =
+    const product =
         await Product.findById(productId);
 
-    if (!foundProduct) {
+    if (!product) {
         return ctx.reply("❌ Produit introuvable");
     }
 
     await ctx.reply(
 `🛒 COMMANDE
 
-Produit : ${foundProduct.name}
-Prix : ${foundProduct.price}`,
+Produit : ${product.name}
+Prix : ${product.price}`,
         {
             reply_markup: {
                 inline_keyboard: [
@@ -382,7 +404,8 @@ Prix : ${foundProduct.price}`,
                     [
                         {
                             text: "✅ Confirmer Achat",
-                            callback_data: `confirm_${foundProduct._id}`
+                            callback_data:
+                                `confirm_${product._id}`
                         }
                     ],
 
@@ -406,10 +429,10 @@ bot.action(/confirm_(.+)/, async (ctx) => {
 
     const productId = ctx.match[1];
 
-    const foundProduct =
+    const product =
         await Product.findById(productId);
 
-    if (!foundProduct) {
+    if (!product) {
         return ctx.reply("❌ Produit introuvable");
     }
 
@@ -417,12 +440,14 @@ bot.action(/confirm_(.+)/, async (ctx) => {
         ADMIN_ID,
 `🚨 NOUVELLE COMMANDE
 
-👤 Client : @${ctx.from.username || "Aucun username"}
+👤 Client :
+@${ctx.from.username || "Aucun username"}
 
-🛒 Produit : ${foundProduct.name}
-   Prix : ${foundProduct.price}
+🛒 Produit : ${product.name}
 
-🆔 ID Client : ${ctx.from.id}`
+💰 Prix : ${product.price}
+
+🆔 Client ID : ${ctx.from.id}`
     );
 
     await ctx.reply(
@@ -432,12 +457,14 @@ bot.action(/confirm_(.+)/, async (ctx) => {
         {
             reply_markup: {
                 inline_keyboard: [
+
                     [
                         {
                             text: "🏠 Retour Menu",
                             callback_data: "menu"
                         }
                     ]
+
                 ]
             }
         }
@@ -450,7 +477,11 @@ bot.action(/confirm_(.+)/, async (ctx) => {
 bot.action("roulette", async (ctx) => {
 
     const reduction =
-        reductions[Math.floor(Math.random() * reductions.length)];
+        reductions[
+            Math.floor(
+                Math.random() * reductions.length
+            )
+        ];
 
     const rouletteVideo =
         "./assets/roulette.mp4";
@@ -481,7 +512,9 @@ bot.action("roulette", async (ctx) => {
 
 bot.action("admin_panel", async (ctx) => {
 
-    if (ctx.from.id.toString() !== ADMIN_ID) {
+    if (
+        ctx.from.id.toString() !== ADMIN_ID
+    ) {
         return ctx.reply("❌ Accès refusé");
     }
 
@@ -510,6 +543,13 @@ bot.action("admin_panel", async (ctx) => {
                             text: "🗑 Supprimer Produit",
                             callback_data: "admin_delete"
                         }
+                    ],
+
+                    [
+                        {
+                            text: "🏠 Retour",
+                            callback_data: "menu"
+                        }
                     ]
 
                 ]
@@ -523,26 +563,79 @@ bot.action("admin_panel", async (ctx) => {
 
 bot.action("admin_products", async (ctx) => {
 
-    const list = await Product.find();
+    const products =
+        await Product.find();
 
-    if (!list.length) {
+    if (!products.length) {
         return ctx.reply("❌ Aucun produit");
     }
 
-    let text = "📦 LISTE PRODUITS\n\n";
+    let text =
+        "📦 LISTE PRODUITS\n\n";
 
-    list.forEach(product => {
+    products.forEach(product => {
 
         text +=
 `🛒 ${product.name}
 📂 ${product.category}
-   ${product.price}
+💰 ${product.price}
 
 `;
 
     });
 
     await ctx.reply(text);
+
+});
+
+// ================= DELETE MENU =================
+
+bot.action("admin_delete", async (ctx) => {
+
+    const products =
+        await Product.find();
+
+    if (!products.length) {
+        return ctx.reply("❌ Aucun produit");
+    }
+
+    const buttons = [];
+
+    products.forEach(product => {
+
+        buttons.push([
+            {
+                text:
+                    `🗑 ${product.name}`,
+                callback_data:
+                    `delete_${product._id}`
+            }
+        ]);
+
+    });
+
+    await ctx.reply(
+        "🗑 Choisis un produit",
+        {
+            reply_markup: {
+                inline_keyboard: buttons
+            }
+        }
+    );
+
+});
+
+// ================= DELETE PRODUCT =================
+
+bot.action(/delete_(.+)/, async (ctx) => {
+
+    const id = ctx.match[1];
+
+    await Product.findByIdAndDelete(id);
+
+    await ctx.reply(
+        "✅ Produit supprimé"
+    );
 
 });
 
@@ -571,7 +664,8 @@ fete`
 
 bot.on("text", async (ctx) => {
 
-    const state = adminState[ctx.from.id];
+    const state =
+        adminState[ctx.from.id];
 
     if (!state) return;
 
@@ -579,47 +673,69 @@ bot.on("text", async (ctx) => {
 
     if (state.step === "category") {
 
-        state.category = ctx.message.text;
+        state.category =
+            ctx.message.text;
+
         state.step = "name";
 
-        return ctx.reply("📝 Nom du produit ?");
+        return ctx.reply(
+            "📝 Nom du produit ?"
+        );
+
     }
 
     // ===== NAME =====
 
     if (state.step === "name") {
 
-        state.name = ctx.message.text;
+        state.name =
+            ctx.message.text;
+
         state.step = "description";
 
-        return ctx.reply("📄 Description ?");
+        return ctx.reply(
+            "📄 Description ?"
+        );
+
     }
 
     // ===== DESCRIPTION =====
 
     if (state.step === "description") {
 
-        state.description = ctx.message.text;
+        state.description =
+            ctx.message.text;
+
         state.step = "price";
 
-        return ctx.reply(" Prix ?");
+        return ctx.reply(
+            "💰 Prix ?"
+        );
+
     }
 
     // ===== PRICE =====
 
     if (state.step === "price") {
 
-        state.price = ctx.message.text;
+        state.price =
+            ctx.message.text;
+
         state.step = "stock";
 
-        return ctx.reply("📦 Stock ?");
+        return ctx.reply(
+            "📦 Stock ?"
+        );
+
     }
 
     // ===== STOCK =====
 
     if (state.step === "stock") {
 
-        state.stock = ctx.message.text;
+        state.stock =
+            ctx.message.text;
+
         state.step = "media";
 
         return ctx.reply(
@@ -629,6 +745,7 @@ bot.on("text", async (ctx) => {
 OU
 - une VIDÉO`
         );
+
     }
 
 });
@@ -637,9 +754,13 @@ OU
 
 bot.on("photo", async (ctx) => {
 
-    const state = adminState[ctx.from.id];
+    const state =
+        adminState[ctx.from.id];
 
-    if (!state || state.step !== "media") return;
+    if (
+        !state ||
+        state.step !== "media"
+    ) return;
 
     const fileId =
         ctx.message.photo.pop().file_id;
@@ -650,7 +771,8 @@ bot.on("photo", async (ctx) => {
 
         name: state.name,
 
-        description: state.description,
+        description:
+            state.description,
 
         price: state.price,
 
@@ -665,7 +787,7 @@ bot.on("photo", async (ctx) => {
     delete adminState[ctx.from.id];
 
     await ctx.reply(
-        "✅ Produit sauvegardé dans MongoDB"
+        "✅ Produit ajouté"
     );
 
 });
@@ -674,9 +796,13 @@ bot.on("photo", async (ctx) => {
 
 bot.on("video", async (ctx) => {
 
-    const state = adminState[ctx.from.id];
+    const state =
+        adminState[ctx.from.id];
 
-    if (!state || state.step !== "media") return;
+    if (
+        !state ||
+        state.step !== "media"
+    ) return;
 
     const fileId =
         ctx.message.video.file_id;
@@ -687,7 +813,8 @@ bot.on("video", async (ctx) => {
 
         name: state.name,
 
-        description: state.description,
+        description:
+            state.description,
 
         price: state.price,
 
@@ -702,54 +829,12 @@ bot.on("video", async (ctx) => {
     delete adminState[ctx.from.id];
 
     await ctx.reply(
-        "✅ Produit sauvegardé dans MongoDB"
+        "✅ Produit ajouté"
     );
 
 });
 
-// ================= DELETE =================
-
-bot.action("admin_delete", async (ctx) => {
-
-    const list = await Product.find();
-
-    let buttons = [];
-
-    list.forEach(product => {
-
-        buttons.push([
-            {
-                text: `🗑 ${product.name}`,
-                callback_data: `delete_${product._id}`
-            }
-        ]);
-
-    });
-
-    await ctx.reply(
-        "🗑 Choisis un produit",
-        {
-            reply_markup: {
-                inline_keyboard: buttons
-            }
-        }
-    );
-
-});
-
-// ================= DELETE PRODUCT =================
-
-bot.action(/delete_(.+)/, async (ctx) => {
-
-    const id = ctx.match[1];
-
-    await Product.findByIdAndDelete(id);
-
-    await ctx.reply("✅ Produit supprimé");
-
-});
-
-// ================= LAUNCH =================
+// ================= BOT =================
 
 bot.launch();
 
