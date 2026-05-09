@@ -19,6 +19,21 @@ const app = express();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// ================= ANTI CRASH =================
+
+bot.catch((err, ctx) => {
+
+    console.log(
+        "❌ Erreur Bot :",
+        err
+    );
+
+    ctx.reply(
+        "⚠️ Une erreur est survenue."
+    );
+
+});
+
 // ================= CONFIG =================
 
 const ADMIN_IDS =
@@ -29,14 +44,35 @@ const BOT_NAME =
 
 // ================= DATABASE =================
 
-mongoose
-    .connect(process.env.MONGO_URI)
-    .then(() =>
-        console.log("✅ MongoDB connecté")
-    )
-    .catch((err) =>
-        console.log("❌ MongoDB :", err)
+mongoose.set("strictQuery", false);
+
+mongoose.connect(
+    process.env.MONGO_URI,
+    {
+
+        useNewUrlParser: true,
+
+        useUnifiedTopology: true
+
+    }
+)
+
+.then(() => {
+
+    console.log(
+        "✅ MongoDB connecté"
     );
+
+})
+
+.catch((err) => {
+
+    console.log(
+        "❌ MongoDB :",
+        err
+    );
+
+});
 
 // ================= EXPRESS =================
 
@@ -44,11 +80,7 @@ app.get("/", (req, res) => {
     res.send("Bot actif");
 });
 
-app.listen(3000, () => {
-    console.log(
-        "🌐 Serveur lancé sur le port 3000"
-    );
-});
+
 
 // ================= HORAIRES =================
 
@@ -75,6 +107,30 @@ const horaires = {
 // ================= ADMIN STATE =================
 
 const adminState = {};
+
+// ================= DB STATUS =================
+
+let dbReady = false;
+
+mongoose.connection.on("connected", () => {
+
+    dbReady = true;
+
+    console.log(
+        "✅ Base prête"
+    );
+
+});
+
+mongoose.connection.on("disconnected", () => {
+
+    dbReady = false;
+
+    console.log(
+        "❌ MongoDB déconnecté"
+    );
+
+});
 
 // ================= ROULETTE =================
 
@@ -311,13 +367,35 @@ bot.action("shop", async (ctx) => {
 // ================= CATEGORY =================
 
 bot.action(/cat_(.+)/, async (ctx) => {
+	
+	if (!dbReady) {
+
+    return ctx.reply(
+        "⏳ Base de données en cours de connexion..."
+    );
+
+}
 
     const category = ctx.match[1];
 
-    const products =
+    let products = [];
+
+try {
+
+    products =
         await Product.find({
             category: category
         });
+
+} catch (err) {
+
+    console.log(err);
+
+    return ctx.reply(
+        "❌ Base de données indisponible"
+    );
+
+}
 
     if (!products.length) {
         return ctx.reply(
@@ -629,8 +707,22 @@ bot.action(
     "admin_products",
     async (ctx) => {
 
-        const products =
-            await Product.find();
+        let products = [];
+
+try {
+
+    products =
+        await Product.find();
+
+} catch (err) {
+
+    console.log(err);
+
+    return ctx.reply(
+        "❌ Base de données indisponible"
+    );
+
+}
 
         if (!products.length) {
             return ctx.reply(
@@ -665,14 +757,30 @@ bot.action(
     "admin_delete",
     async (ctx) => {
 
-        const products =
-            await Product.find();
+        let products = [];
 
-        if (!products.length) {
-            return ctx.reply(
-                "❌ Aucun produit"
-            );
-        }
+try {
+
+    products =
+        await Product.find();
+
+} catch (err) {
+
+    console.log(err);
+
+    return ctx.reply(
+        "❌ Base de données indisponible"
+    );
+
+}
+
+if (!products.length) {
+
+    return ctx.reply(
+        "❌ Aucun produit"
+    );
+
+}
 
         const buttons = [];
 
@@ -954,8 +1062,46 @@ bot.on("video", async (ctx) => {
 
 // ================= BOT =================
 
-bot.launch();
+// ================= WEBHOOK =================
 
-console.log(
-    "🚀 Bot Telegram lancé"
-);
+const PORT =
+    process.env.PORT || 3000;
+
+const RENDER_URL =
+    process.env.RENDER_EXTERNAL_URL;
+
+// ===== WEBHOOK =====
+
+if (RENDER_URL) {
+
+    bot.telegram.setWebhook(
+        `${RENDER_URL}/bot`
+    );
+
+    app.use(
+        bot.webhookCallback("/bot")
+    );
+
+    console.log(
+        "🚀 Bot lancé en WEBHOOK"
+    );
+
+} else {
+
+    bot.launch();
+
+    console.log(
+        "🚀 Bot lancé en LOCAL"
+    );
+
+}
+
+// ================= SERVER =================
+
+app.listen(PORT, () => {
+
+    console.log(
+        `🌐 Serveur lancé sur le port ${PORT}`
+    );
+
+});
