@@ -1,5 +1,13 @@
 const mongoose = require("mongoose");
 
+const priceSchema = new mongoose.Schema({
+
+    quantity: String,
+
+    price: Number
+
+});
+
 const productSchema = new mongoose.Schema({
 
     category: String,
@@ -8,9 +16,9 @@ const productSchema = new mongoose.Schema({
 
     description: String,
 
-    price: String,
+    stock: Number,
 
-    stock: String,
+    prices: [priceSchema],
 
     photoFile: String,
 

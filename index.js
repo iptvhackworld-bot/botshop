@@ -12,12 +12,19 @@ const express = require("express");
 const fs = require("fs");
 
 const Product = require("./models/Product");
+const Admin = require("./models/Admin");
+const Category = require("./models/Category");
+const Roulette = require("./models/Roulette");
+const Order = require("./models/Order");
+const User = require("./models/User");
 
 // ================= APP =================
 
 const app = express();
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const bot = new Telegraf(
+    process.env.BOT_TOKEN
+);
 
 // ================= ANTI CRASH =================
 
@@ -36,8 +43,16 @@ bot.catch((err, ctx) => {
 
 // ================= CONFIG =================
 
-const ADMIN_IDS =
-    process.env.ADMIN_ID.split(",");
+async function getAdmin(userId) {
+
+    return await Admin.findOne({
+
+        telegramId:
+            userId.toString()
+
+    });
+
+}
 
 const BOT_NAME =
     "🔥 LE MEXICAIN BOURGES 🔥";
@@ -47,21 +62,37 @@ const BOT_NAME =
 mongoose.set("strictQuery", false);
 
 mongoose.connect(
-    process.env.MONGO_URI,
-    {
-
-        useNewUrlParser: true,
-
-        useUnifiedTopology: true
-
-    }
+    process.env.MONGO_URI
 )
 
-.then(() => {
+.then(async () => {
 
     console.log(
         "✅ MongoDB connecté"
     );
+
+    const ownerId =
+        process.env.ADMIN_ID;
+
+    const exists =
+        await Admin.findOne({
+            telegramId: ownerId
+        });
+
+    if (!exists) {
+
+        await Admin.create({
+
+    telegramId: ownerId,
+
+    role: "owner"
+
+});
+
+        console.log(
+            "✅ Admin principal ajouté"
+        );
+    }
 
 })
 
@@ -77,60 +108,61 @@ mongoose.connect(
 // ================= EXPRESS =================
 
 app.get("/", (req, res) => {
+
     res.send("Bot actif");
+
 });
-
-
 
 // ================= HORAIRES =================
 
 const horaires = {
 
     lundi: "12h - 2h",
-
     mardi: "12h - 2h",
-
     mercredi: "12h - 2h",
-
     jeudi: "12h - 2h",
-
     vendredi: "12h - 2h",
-
     samedi: "12h - 2h",
-
     dimanche: "12h - 2h",
 
     livraison: "13h - 00h"
 
 };
 
-// ================= ADMIN STATE =================
+// ================= STATES =================
 
 const adminState = {};
+const userState = {};
 
 // ================= DB STATUS =================
 
 let dbReady = false;
 
-mongoose.connection.on("connected", () => {
+mongoose.connection.on(
+    "connected",
+    () => {
 
-    dbReady = true;
+        dbReady = true;
 
-    console.log(
-        "✅ Base prête"
-    );
+        console.log(
+            "✅ Base prête"
+        );
 
-});
+    }
+);
 
-mongoose.connection.on("disconnected", () => {
+mongoose.connection.on(
+    "disconnected",
+    () => {
 
-    dbReady = false;
+        dbReady = false;
 
-    console.log(
-        "❌ MongoDB déconnecté"
-    );
+        console.log(
+            "❌ MongoDB déconnecté"
+        );
 
-});
+    }
+);
 
 // ================= ROULETTE =================
 
@@ -144,14 +176,64 @@ const reductions = [
     "75%"
 ];
 
+// ================= FIX BUTTONS =================
+
+bot.use(async (ctx, next) => {
+
+    if (ctx.callbackQuery) {
+
+        try {
+
+            await ctx.answerCbQuery();
+
+        } catch (e) {}
+
+    }
+
+    return next();
+
+});
+
 // ================= START =================
 
 bot.start(async (ctx) => {
 
-    const isAdmin =
-        ADMIN_IDS.includes(
-            ctx.from.id.toString()
+    // ================= SAVE USER =================
+
+    const userExists =
+        await User.findOne({
+
+            telegramId:
+                ctx.from.id.toString()
+
+        });
+
+    if (!userExists) {
+
+        await User.create({
+
+            telegramId:
+                ctx.from.id.toString(),
+
+            username:
+                ctx.from.username ||
+                "Aucun"
+
+        });
+
+    }
+
+    // ================= ADMIN =================
+
+    const admin =
+        await getAdmin(
+            ctx.from.id
         );
+
+    const adminAccess =
+        !!admin;
+
+    // ================= BUTTONS =================
 
     const buttons = [
 
@@ -178,16 +260,23 @@ bot.start(async (ctx) => {
 
     ];
 
-    if (isAdmin) {
+    // ================= ADMIN BUTTON =================
+
+    if (adminAccess) {
 
         buttons.push([
+
             {
                 text: "👑 Admin",
-                callback_data: "admin_panel"
+                callback_data:
+                    "admin_panel"
             }
+
         ]);
 
     }
+
+    // ================= BANNER =================
 
     const banner =
         "./assets/banner.jpg";
@@ -195,27 +284,36 @@ bot.start(async (ctx) => {
     if (fs.existsSync(banner)) {
 
         await ctx.replyWithPhoto(
+
             { source: banner },
+
             {
                 caption:
 `🔥 ${BOT_NAME}
 
 🛒 Boutique Premium`,
+
                 reply_markup: {
-                    inline_keyboard: buttons
+                    inline_keyboard:
+                        buttons
                 }
             }
+
         );
 
     } else {
 
         await ctx.reply(
+
             `🔥 ${BOT_NAME}`,
+
             {
                 reply_markup: {
-                    inline_keyboard: buttons
+                    inline_keyboard:
+                        buttons
                 }
             }
+
         );
 
     }
@@ -226,10 +324,11 @@ bot.start(async (ctx) => {
 
 bot.action("menu", async (ctx) => {
 
-    const isAdmin =
-        ADMIN_IDS.includes(
-            ctx.from.id.toString()
-        );
+    const admin =
+        await getAdmin(ctx.from.id);
+
+    const adminAccess =
+        !!admin;
 
     const buttons = [
 
@@ -256,7 +355,7 @@ bot.action("menu", async (ctx) => {
 
     ];
 
-    if (isAdmin) {
+    if (adminAccess) {
 
         buttons.push([
             {
@@ -312,52 +411,151 @@ bot.action("horaires", async (ctx) => {
 
 });
 
+// ================= ROULETTE =================
+
+bot.action("roulette", async (ctx) => {
+
+    const userId =
+        ctx.from.id.toString();
+
+    const existing =
+        await Roulette.findOne({
+            userId
+        });
+
+    const now =
+        new Date();
+
+    // ================= DEJA JOUE =================
+
+    if (existing) {
+
+        const diff =
+            now - existing.lastSpin;
+
+        const hours =
+            diff / (1000 * 60 * 60);
+
+        if (hours < 24) {
+
+            const remaining =
+                Math.ceil(
+                    24 - hours
+                );
+
+            return ctx.reply(
+`🎰 Roulette déjà utilisée.
+
+⏳ Réessaie dans ${remaining}h.`
+            );
+
+        }
+
+    }
+
+    // ================= RANDOM =================
+
+    const reduction =
+        reductions[
+            Math.floor(
+                Math.random() *
+                reductions.length
+            )
+        ];
+
+    // ================= SAVE =================
+
+    await Roulette.findOneAndUpdate(
+
+        {
+            userId
+        },
+
+        {
+            lastSpin: now
+        },
+
+        {
+            upsert: true
+        }
+
+    );
+
+    // ================= VIDEO =================
+
+    const rouletteVideo =
+        "./assets/roulette.mp4";
+
+    if (
+        fs.existsSync(
+            rouletteVideo
+        )
+    ) {
+
+        await ctx.replyWithVideo(
+
+            { source: rouletteVideo },
+
+            {
+                caption:
+`🎰 ROULETTE
+
+🎉 Tu as gagné ${reduction} de réduction !`
+            }
+
+        );
+
+    } else {
+
+        await ctx.reply(
+`🎰 Tu as gagné ${reduction}`
+        );
+
+    }
+
+});
+
 // ================= SHOP =================
 
 bot.action("shop", async (ctx) => {
+
+    const categories =
+        await Category.find();
+
+    if (!categories.length) {
+
+        return ctx.reply(
+            "❌ Aucune catégorie"
+        );
+
+    }
+
+    const buttons = [];
+
+    for (const cat of categories) {
+
+        buttons.push([
+            {
+                text: cat.name,
+                callback_data:
+                    `cat_${cat.slug}`
+            }
+        ]);
+
+    }
+
+    buttons.push([
+        {
+            text: "🏠 Retour",
+            callback_data: "menu"
+        }
+    ]);
 
     await ctx.reply(
         "🛒 BOUTIQUE\n\nChoisis une catégorie :",
         {
             reply_markup: {
-                inline_keyboard: [
-
-                    [
-                        {
-                            text: "🍫 HASH",
-                            callback_data: "cat_hash"
-                        }
-                    ],
-
-                    [
-                        {
-                            text: "💎 HASH PREMIUM",
-                            callback_data: "cat_hashPremium"
-                        }
-                    ],
-
-                    [
-                        {
-                            text: "🌿 WEED",
-                            callback_data: "cat_weed"
-                        }
-                    ],
-
-                    [
-                        {
-                            text: "🎉 LA FÊTE",
-                            callback_data: "cat_fete"
-                        }
-                    ],
-
-                    [
-                        {
-                            text: "🏠 Retour",
-                            callback_data: "menu"
-                        }
-                    ]
-
-                ]
+                inline_keyboard: buttons
             }
         }
     );
@@ -367,50 +565,86 @@ bot.action("shop", async (ctx) => {
 // ================= CATEGORY =================
 
 bot.action(/cat_(.+)/, async (ctx) => {
-	
-	if (!dbReady) {
 
-    return ctx.reply(
-        "⏳ Base de données en cours de connexion..."
-    );
+    if (!dbReady) {
 
-}
+        return ctx.reply(
+            "⏳ Base de données en cours de connexion..."
+        );
 
-    const category = ctx.match[1];
+    }
+
+    const category =
+        ctx.match[1];
 
     let products = [];
 
-try {
+    try {
 
-    products =
-        await Product.find({
-            category: category
-        });
+        products =
+            await Product.find({
+                category
+            });
 
-} catch (err) {
+    } catch (err) {
 
-    console.log(err);
+        console.log(err);
 
-    return ctx.reply(
-        "❌ Base de données indisponible"
-    );
+        return ctx.reply(
+            "❌ Base de données indisponible"
+        );
 
-}
+    }
 
     if (!products.length) {
+
         return ctx.reply(
             "❌ Aucun produit"
         );
+
     }
 
     for (const product of products) {
 
+        let pricesText = "";
+
+        const buttons = [];
+
+        product.prices.forEach((item) => {
+
+            pricesText +=
+`${item.quantity} → ${item.price}€\n`;
+
+            buttons.push([
+                {
+                    text:
+`${item.quantity} - ${item.price}€`,
+
+                    callback_data:
+`buy_${product._id}_${item.quantity}_${item.price}`
+                }
+            ]);
+
+        });
+
+        buttons.push([
+            {
+                text: "🏠 Retour",
+                callback_data: "shop"
+            }
+        ]);
+
         const caption =
 `🛒 ${product.name}
 
-📄 Description : ${product.description}
-💰 Prix : ${product.price}
-📦 Stock : ${product.stock}`;
+📄 Description :
+${product.description}
+
+💰 Tarifs :
+${pricesText}
+
+📦 Stock :
+${product.stock}`;
 
         // ===== VIDEO =====
 
@@ -421,15 +655,7 @@ try {
                 {
                     caption,
                     reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text: "🛒 Commander",
-                                    callback_data:
-                                        `buy_${product._id}`
-                                }
-                            ]
-                        ]
+                        inline_keyboard: buttons
                     }
                 }
             );
@@ -445,15 +671,7 @@ try {
                 {
                     caption,
                     reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text: "🛒 Commander",
-                                    callback_data:
-                                        `buy_${product._id}`
-                                }
-                            ]
-                        ]
+                        inline_keyboard: buttons
                     }
                 }
             );
@@ -468,15 +686,7 @@ try {
                 caption,
                 {
                     reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text: "🛒 Commander",
-                                    callback_data:
-                                        `buy_${product._id}`
-                                }
-                            ]
-                        ]
+                        inline_keyboard: buttons
                     }
                 }
             );
@@ -486,13 +696,21 @@ try {
     }
 
 });
-
 // ================= BUY =================
 
 bot.action(/buy_(.+)/, async (ctx) => {
 
+    const data =
+        ctx.match[1].split("_");
+
     const productId =
-        ctx.match[1];
+        data[0];
+
+    const quantity =
+        data[1];
+
+    const price =
+        data[2];
 
     const product =
         await Product.findById(
@@ -500,32 +718,45 @@ bot.action(/buy_(.+)/, async (ctx) => {
         );
 
     if (!product) {
+
         return ctx.reply(
             "❌ Produit introuvable"
         );
+
     }
 
     await ctx.reply(
 `🛒 COMMANDE
 
-Produit : ${product.name}
-Prix : ${product.price}`,
+Produit :
+${product.name}
+
+📦 Format :
+${quantity}
+
+💰 Prix :
+${price}€`,
         {
             reply_markup: {
                 inline_keyboard: [
 
                     [
                         {
-                            text: "✅ Confirmer Achat",
+                            text:
+                                "✅ Confirmer Achat",
+
                             callback_data:
-                                `confirm_${product._id}`
+`confirm_${product._id}_${quantity}_${price}`
                         }
                     ],
 
                     [
                         {
-                            text: "⬅️ Retour",
-                            callback_data: "shop"
+                            text:
+                                "🏠 Retour",
+
+                            callback_data:
+                                "shop"
                         }
                     ]
 
@@ -538,10 +769,21 @@ Prix : ${product.price}`,
 
 // ================= CONFIRM =================
 
+// ================= CONFIRM =================
+
 bot.action(/confirm_(.+)/, async (ctx) => {
 
+    const data =
+        ctx.match[1].split("_");
+
     const productId =
-        ctx.match[1];
+        data[0];
+
+    const quantity =
+        data[1];
+
+    const total =
+        parseFloat(data[2]);
 
     const product =
         await Product.findById(
@@ -549,25 +791,96 @@ bot.action(/confirm_(.+)/, async (ctx) => {
         );
 
     if (!product) {
+
         return ctx.reply(
             "❌ Produit introuvable"
         );
+
     }
 
-    for (const admin of ADMIN_IDS) {
+    // ================= SAVE ORDER =================
+
+    const order =
+        await Order.create({
+
+            clientId:
+                ctx.from.id.toString(),
+
+            username:
+                ctx.from.username ||
+                "Aucun username",
+
+            productId:
+                product._id.toString(),
+
+            productName:
+                product.name,
+
+            quantity,
+
+            total,
+
+            status:
+                "pending"
+
+        });
+
+    // ================= SEND ADMINS =================
+
+    const admins =
+        await Admin.find();
+
+    for (const admin of admins) {
 
         await bot.telegram.sendMessage(
-            admin,
+
+            admin.telegramId,
+
 `🚨 NOUVELLE COMMANDE
 
 👤 Client :
 @${ctx.from.username || "Aucun username"}
 
-🛒 Produit : ${product.name}
+🛒 Produit :
+${product.name}
 
-💰 Prix : ${product.price}
+📦 Format :
+${quantity}
 
-🆔 Client ID : ${ctx.from.id}`
+💰 Total :
+${total}€
+
+🆔 Client ID :
+${ctx.from.id}`,
+
+            {
+                reply_markup: {
+                    inline_keyboard: [
+
+                        [
+                            {
+                                text:
+                                    "✅ Valider",
+
+                                callback_data:
+`validate_${order._id}`
+                            }
+                        ],
+
+                        [
+                            {
+                                text:
+                                    "❌ Refuser",
+
+                                callback_data:
+`reject_${order._id}`
+                            }
+                        ]
+
+                    ]
+                }
+            }
+
         );
 
     }
@@ -575,15 +888,18 @@ bot.action(/confirm_(.+)/, async (ctx) => {
     await ctx.reply(
 `✅ Commande envoyée
 
-📩 L'administrateur va te contacter.`,
+⏳ En attente de validation administrateur.`,
         {
             reply_markup: {
                 inline_keyboard: [
 
                     [
                         {
-                            text: "🏠 Retour Menu",
-                            callback_data: "menu"
+                            text:
+                                "🏠 Retour Menu",
+
+                            callback_data:
+                                "menu"
                         }
                     ]
 
@@ -594,46 +910,103 @@ bot.action(/confirm_(.+)/, async (ctx) => {
 
 });
 
-// ================= ROULETTE =================
+// ================= VALIDATE ORDER =================
 
-bot.action("roulette", async (ctx) => {
+bot.action(
+    /validate_(.+)/,
+    async (ctx) => {
 
-    const reduction =
-        reductions[
-            Math.floor(
-                Math.random() *
-                reductions.length
-            )
-        ];
+        const orderId =
+            ctx.match[1];
 
-    const rouletteVideo =
-        "./assets/roulette.mp4";
+        const order =
+            await Order.findById(
+                orderId
+            );
 
-    if (
-        fs.existsSync(
-            rouletteVideo
-        )
-    ) {
+        if (!order) {
 
-        await ctx.replyWithVideo(
-            { source: rouletteVideo },
-            {
-                caption:
-`🎰 ROULETTE
+            return ctx.reply(
+                "❌ Commande introuvable"
+            );
 
-🎉 Tu as gagné ${reduction} de réduction !`
-            }
+        }
+
+        order.status =
+            "validated";
+
+        await order.save();
+
+        // ================= MESSAGE CLIENT =================
+
+        await bot.telegram.sendMessage(
+
+            order.clientId,
+
+`🎉 Votre commande a été validée avec succès !
+
+🙏 Merci d'avoir commandé dans notre boutique.
+
+📦 Votre commande est maintenant en préparation.
+
+🔥 ${BOT_NAME}`
+
         );
 
-    } else {
-
         await ctx.reply(
-`🎰 Tu as gagné ${reduction}`
+            "✅ Commande validée"
         );
 
     }
+);
 
-});
+// ================= REJECT ORDER =================
+
+bot.action(
+    /reject_(.+)/,
+    async (ctx) => {
+
+        const orderId =
+            ctx.match[1];
+
+        const order =
+            await Order.findById(
+                orderId
+            );
+
+        if (!order) {
+
+            return ctx.reply(
+                "❌ Commande introuvable"
+            );
+
+        }
+
+        order.status =
+            "rejected";
+
+        await order.save();
+
+        // ================= MESSAGE CLIENT =================
+
+        await bot.telegram.sendMessage(
+
+            order.clientId,
+
+`❌ Votre commande a été refusée.
+
+📩 Contactez un administrateur pour plus d'informations.
+
+🔥 ${BOT_NAME}`
+
+        );
+
+        await ctx.reply(
+            "❌ Commande refusée"
+        );
+
+    }
+);
 
 // ================= ADMIN PANEL =================
 
@@ -641,61 +1014,231 @@ bot.action(
     "admin_panel",
     async (ctx) => {
 
-        if (
-            !ADMIN_IDS.includes(
-                ctx.from.id.toString()
-            )
-        ) {
+        const admin =
+            await getAdmin(
+                ctx.from.id
+            );
+
+        if (!admin) {
+
             return ctx.reply(
                 "❌ Accès refusé"
             );
+
         }
 
+        const buttons = [
+
+            [
+                {
+                    text:
+                        "➕ Ajouter Produit",
+
+                    callback_data:
+                        "admin_add"
+                }
+            ],
+
+            [
+                {
+                    text:
+                        "📦 Voir Produits",
+
+                    callback_data:
+                        "admin_products"
+                }
+            ],
+
+            [
+                {
+                    text:
+                        "🗑 Supprimer Produit",
+
+                    callback_data:
+                        "admin_delete"
+                }
+            ]
+
+        ];
+
+        // ===== ADMIN + OWNER =====
+
+        if (
+            admin.role === "admin" ||
+            admin.role === "owner"
+        ) {
+
+            buttons.push([
+
+                {
+                    text:
+                        "📂 Ajouter Catégorie",
+
+                    callback_data:
+                        "add_category"
+                }
+
+            ]);
+
+        }
+
+        // ===== OWNER =====
+
+        if (
+            admin.role === "owner"
+        ) {
+
+            buttons.push([
+
+                {
+                    text:
+                        "👑 Ajouter Admin",
+
+                    callback_data:
+                        "add_admin"
+                }
+
+            ]);
+
+            buttons.push([
+
+                {
+                    text:
+                        "🔧 Ajouter Modérateur",
+
+                    callback_data:
+                        "add_moderator"
+                }
+
+            ]);
+
+        }
+
+        // ===== RETOUR =====
+
+        buttons.push([
+
+            {
+                text:
+                    "🏠 Retour",
+
+                callback_data:
+                    "menu"
+            }
+
+        ]);
+
         await ctx.reply(
-`👑 PANEL ADMIN`,
+`👑 PANEL ADMIN
+
+🛡 Rôle :
+${admin.role}`,
             {
                 reply_markup: {
-                    inline_keyboard: [
-
-                        [
-                            {
-                                text:
-                                    "➕ Ajouter Produit",
-                                callback_data:
-                                    "admin_add"
-                            }
-                        ],
-
-                        [
-                            {
-                                text:
-                                    "📦 Voir Produits",
-                                callback_data:
-                                    "admin_products"
-                            }
-                        ],
-
-                        [
-                            {
-                                text:
-                                    "🗑 Supprimer Produit",
-                                callback_data:
-                                    "admin_delete"
-                            }
-                        ],
-
-                        [
-                            {
-                                text:
-                                    "🏠 Retour",
-                                callback_data:
-                                    "menu"
-                            }
-                        ]
-
-                    ]
+                    inline_keyboard:
+                        buttons
                 }
             }
+        );
+
+    }
+);
+
+// ================= ADD ADMIN =================
+
+bot.action(
+    "add_admin",
+    async (ctx) => {
+
+        const admin =
+            await getAdmin(
+                ctx.from.id
+            );
+
+        if (
+            admin?.role !==
+            "owner"
+        ) {
+
+            return ctx.reply(
+                "❌ Accès refusé"
+            );
+
+        }
+
+        adminState[
+            ctx.from.id
+        ] = {
+
+            step:
+                "add_admin"
+
+        };
+
+        await ctx.reply(
+            "👑 Envoie l'ID Telegram du nouvel admin"
+        );
+
+    }
+);
+
+// ================= ADD MODERATOR =================
+
+bot.action(
+    "add_moderator",
+    async (ctx) => {
+
+        const admin =
+            await getAdmin(
+                ctx.from.id
+            );
+
+        if (
+            admin?.role !==
+            "owner"
+        ) {
+
+            return ctx.reply(
+                "❌ Accès refusé"
+            );
+
+        }
+
+        adminState[
+            ctx.from.id
+        ] = {
+
+            step:
+                "add_moderator"
+
+        };
+
+        await ctx.reply(
+            "🔧 Envoie l'ID Telegram du modérateur"
+        );
+
+    }
+);
+
+
+
+// ================= ADD CATEGORY =================
+
+bot.action(
+    "add_category",
+    async (ctx) => {
+
+        adminState[
+            ctx.from.id
+        ] = {
+
+            step:
+                "add_category"
+
+        };
+
+        await ctx.reply(
+            "📂 Envoie le nom de la catégorie"
         );
 
     }
@@ -709,25 +1252,27 @@ bot.action(
 
         let products = [];
 
-try {
+        try {
 
-    products =
-        await Product.find();
+            products =
+                await Product.find();
 
-} catch (err) {
+        } catch (err) {
 
-    console.log(err);
+            console.log(err);
 
-    return ctx.reply(
-        "❌ Base de données indisponible"
-    );
+            return ctx.reply(
+                "❌ Base de données indisponible"
+            );
 
-}
+        }
 
         if (!products.length) {
+
             return ctx.reply(
                 "❌ Aucun produit"
             );
+
         }
 
         let text =
@@ -739,7 +1284,7 @@ try {
                 text +=
 `🛒 ${product.name}
 📂 ${product.category}
-💰 ${product.price}
+💰 Multi tarifs
 
 `;
 
@@ -759,28 +1304,28 @@ bot.action(
 
         let products = [];
 
-try {
+        try {
 
-    products =
-        await Product.find();
+            products =
+                await Product.find();
 
-} catch (err) {
+        } catch (err) {
 
-    console.log(err);
+            console.log(err);
 
-    return ctx.reply(
-        "❌ Base de données indisponible"
-    );
+            return ctx.reply(
+                "❌ Base de données indisponible"
+            );
 
-}
+        }
 
-if (!products.length) {
+        if (!products.length) {
 
-    return ctx.reply(
-        "❌ Aucun produit"
-    );
+            return ctx.reply(
+                "❌ Aucun produit"
+            );
 
-}
+        }
 
         const buttons = [];
 
@@ -841,16 +1386,21 @@ bot.action(
         adminState[
             ctx.from.id
         ] = {
-            step: "category"
+
+            step:
+                "category"
+
         };
 
         await ctx.reply(
 `➕ AJOUT PRODUIT
 
-Envoie une catégorie :
+Envoie le slug exact de la catégorie.
+
+Exemple :
 
 hash
-hashPremium
+hashpremium
 weed
 fete`
         );
@@ -862,12 +1412,133 @@ fete`
 
 bot.on("text", async (ctx) => {
 
+    // ================= USER STATE =================
+
+    const user =
+        userState[
+            ctx.from.id
+        ];
+
+    if (
+        user?.step ===
+        "waiting_quantity"
+    ) {
+
+        const quantity =
+            parseInt(
+                ctx.message.text
+            );
+
+        if (
+            isNaN(quantity) ||
+            quantity <= 0
+        ) {
+
+            return ctx.reply(
+                "❌ Quantité invalide"
+            );
+
+        }
+
+        return ctx.reply(
+            "❌ Ancien système désactivé"
+        );
+
+    }
+
+    // ================= ADMIN STATE =================
+
     const state =
         adminState[
             ctx.from.id
         ];
 
     if (!state) return;
+
+    // ===== ADD ADMIN =====
+
+if (
+    state.step ===
+    "add_admin"
+) {
+
+    await Admin.create({
+
+        telegramId:
+            ctx.message.text,
+
+        role:
+            "admin"
+
+    });
+
+    delete adminState[
+        ctx.from.id
+    ];
+
+    return ctx.reply(
+        "✅ Nouvel admin ajouté"
+    );
+
+}
+
+// ===== ADD MODERATOR =====
+
+if (
+    state.step ===
+    "add_moderator"
+) {
+
+    await Admin.create({
+
+        telegramId:
+            ctx.message.text,
+
+        role:
+            "moderator"
+
+    });
+
+    delete adminState[
+        ctx.from.id
+    ];
+
+    return ctx.reply(
+        "✅ Modérateur ajouté"
+    );
+
+}
+
+    // ===== ADD CATEGORY =====
+
+    if (
+        state.step ===
+        "add_category"
+    ) {
+
+        const name =
+            ctx.message.text;
+
+        const slug = name
+            .toLowerCase()
+            .replace(/ /g, "_");
+
+        await Category.create({
+
+            name,
+            slug
+
+        });
+
+        delete adminState[
+            ctx.from.id
+        ];
+
+        return ctx.reply(
+            "✅ Catégorie ajoutée"
+        );
+
+    }
 
     // ===== CATEGORY =====
 
@@ -879,7 +1550,8 @@ bot.on("text", async (ctx) => {
         state.category =
             ctx.message.text;
 
-        state.step = "name";
+        state.step =
+            "name";
 
         return ctx.reply(
             "📝 Nom du produit ?"
@@ -890,7 +1562,8 @@ bot.on("text", async (ctx) => {
     // ===== NAME =====
 
     if (
-        state.step === "name"
+        state.step ===
+        "name"
     ) {
 
         state.name =
@@ -915,7 +1588,8 @@ bot.on("text", async (ctx) => {
         state.description =
             ctx.message.text;
 
-        state.step = "price";
+        state.step =
+            "price";
 
         return ctx.reply(
             "💰 Prix ?"
@@ -923,14 +1597,90 @@ bot.on("text", async (ctx) => {
 
     }
 
-    // ===== PRICE =====
+// ===== PRICE =====
 
-    if (
-        state.step === "price"
-    ) {
+if (
+    state.step ===
+    "price"
+) {
 
-        state.price =
-            ctx.message.text;
+    if (!state.prices) {
+
+        state.prices = [];
+
+    }
+
+    const data =
+        ctx.message.text.split("=");
+
+    if (data.length < 2) {
+
+        return ctx.reply(
+`❌ Format invalide
+
+Exemple :
+1G=10`
+        );
+
+    }
+
+    const quantity =
+        data[0];
+
+    const price =
+        parseFloat(data[1]);
+
+    state.prices.push({
+
+        quantity,
+        price
+
+    });
+
+    state.step =
+        "add_more_prices";
+
+    return ctx.reply(
+`✅ Tarif ajouté
+
+${quantity} → ${price}€
+
+➕ Ajouter un autre tarif ?
+
+Réponds :
+
+oui
+ou
+non`
+    );
+
+}
+
+// ===== ADD MORE PRICES =====
+
+if (
+    state.step ===
+    "add_more_prices"
+) {
+
+    const response =
+        ctx.message.text
+            .toLowerCase();
+
+    if (response === "oui") {
+
+        state.step = "price";
+
+        return ctx.reply(
+`📦 Nouveau format ?
+
+Exemple :
+3G=25`
+        );
+
+    }
+
+    if (response === "non") {
 
         state.step = "stock";
 
@@ -940,16 +1690,24 @@ bot.on("text", async (ctx) => {
 
     }
 
+    return ctx.reply(
+        "❌ Réponds uniquement par oui ou non"
+    );
+
+}
+
     // ===== STOCK =====
 
     if (
-        state.step === "stock"
+        state.step ===
+        "stock"
     ) {
 
         state.stock =
             ctx.message.text;
 
-        state.step = "media";
+        state.step =
+            "media";
 
         return ctx.reply(
 `📷 Envoie maintenant :
@@ -982,32 +1740,79 @@ bot.on("photo", async (ctx) => {
         ctx.message.photo.pop()
             .file_id;
 
+    // ================= SAVE PRODUCT =================
+
     await Product.create({
 
         category:
             state.category,
 
-        name: state.name,
+        name:
+            state.name,
 
         description:
             state.description,
 
-        price: state.price,
+        prices:
+            state.prices,
 
-        stock: state.stock,
+        stock:
+            state.stock,
 
-        photoFile: fileId,
+        photoFile:
+            fileId,
 
-        videoFile: null
+        videoFile:
+            null
 
     });
+
+    // ================= DIFFUSION =================
+
+    const users =
+        await User.find();
+
+    for (const user of users) {
+
+        try {
+
+            await bot.telegram.sendPhoto(
+
+                user.telegramId,
+
+                fileId,
+
+                {
+                    caption:
+`🔥 NOUVEAU PRODUIT DISPONIBLE
+
+🛒 ${state.name}
+
+📄 ${state.description}
+
+🔥 Disponible maintenant dans la boutique !`
+                }
+
+            );
+
+        } catch (err) {
+
+            console.log(
+                `❌ Diffusion impossible à ${user.telegramId}`
+            );
+
+        }
+
+    }
+
+    // ================= RESET =================
 
     delete adminState[
         ctx.from.id
     ];
 
     await ctx.reply(
-        "✅ Produit ajouté"
+        "✅ Produit ajouté + diffusé à tous les utilisateurs"
     );
 
 });
@@ -1030,37 +1835,82 @@ bot.on("video", async (ctx) => {
     const fileId =
         ctx.message.video.file_id;
 
+    // ================= SAVE PRODUCT =================
+
     await Product.create({
 
         category:
             state.category,
 
-        name: state.name,
+        name:
+            state.name,
 
         description:
             state.description,
 
-        price: state.price,
+        prices:
+            state.prices,
 
-        stock: state.stock,
+        stock:
+            state.stock,
 
-        photoFile: null,
+        photoFile:
+            null,
 
-        videoFile: fileId
+        videoFile:
+            fileId
 
     });
+
+    // ================= DIFFUSION =================
+
+    const users =
+        await User.find();
+
+    for (const user of users) {
+
+        try {
+
+            await bot.telegram.sendVideo(
+
+                user.telegramId,
+
+                fileId,
+
+                {
+                    caption:
+`🔥 NOUVEAU PRODUIT DISPONIBLE
+
+🛒 ${state.name}
+
+📄 ${state.description}
+
+🔥 Disponible maintenant dans la boutique !`
+                }
+
+            );
+
+        } catch (err) {
+
+            console.log(
+                `❌ Diffusion impossible à ${user.telegramId}`
+            );
+
+        }
+
+    }
+
+    // ================= RESET =================
 
     delete adminState[
         ctx.from.id
     ];
 
     await ctx.reply(
-        "✅ Produit ajouté"
+        "✅ Produit ajouté + diffusé à tous les utilisateurs"
     );
 
 });
-
-// ================= BOT =================
 
 // ================= WEBHOOK =================
 
@@ -1069,8 +1919,6 @@ const PORT =
 
 const RENDER_URL =
     process.env.RENDER_EXTERNAL_URL;
-
-// ===== WEBHOOK =====
 
 if (RENDER_URL) {
 
